@@ -1,31 +1,43 @@
 package main
 
-import "net/http"
+import (
+	"log"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+)
+
+type apiConfig struct {
+	fileserverHits int
+}
 
 func main() {
-	mux := http.NewServeMux()
-	corsMux := middlewareCors(mux)
+	const filepathRoot = "."
+	const port = "8080"
 
-	mux.Handle("/app/", http.StripPrefix("/app/", http.FileServer(http.Dir("./app"))))
-	mux.HandleFunc("/healthz", readinessHandler)
-	http.ListenAndServe(":8080", corsMux)
-}
+	apiCfg := apiConfig{
+		fileserverHits: 0,
+	}
 
-func readinessHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(200)
-	w.Write([]byte("OK"))
-}
+	router := chi.NewRouter()
+	fsHandler := apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot+"/app"))))
+	router.Handle("/app", fsHandler)
+	router.Handle("/app/*", fsHandler)
 
-func middlewareCors(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "*")
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	apiRouter := chi.NewRouter()
+	apiRouter.Get("/healthz", handlerReadiness)
+	apiRouter.Get("/metrics", apiCfg.handlerMetrics)
+	apiRouter.Get("/reset", apiCfg.handlerReset)
+
+	router.Mount("/api", apiRouter)
+
+	corsMux := middlewareCors(router)
+
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: corsMux,
+	}
+
+	log.Printf("Serving files from %s on port: %s\n", filepathRoot, port)
+	log.Fatal(srv.ListenAndServe())
 }
