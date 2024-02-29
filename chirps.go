@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func (ctx *WebServerContext) handleGetChirps(w http.ResponseWriter, r *http.Request) {
@@ -14,6 +17,28 @@ func (ctx *WebServerContext) handleGetChirps(w http.ResponseWriter, r *http.Requ
 	}
 
 	respondWithJSON(w, http.StatusOK, chirps)
+}
+
+func (ctx *WebServerContext) handleGetChirp(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	idInt, err := strconv.Atoi(id)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid chirp ID")
+		return
+	}
+
+	chirp, err := ctx.Database.GetChirp(idInt)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error getting chirp")
+		return
+	}
+
+	if chirp.ID == 0 {
+		respondWithError(w, http.StatusNotFound, "Chirp not found")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, chirp)
 }
 
 func (ctx *WebServerContext) handlePostChirp(w http.ResponseWriter, r *http.Request) {

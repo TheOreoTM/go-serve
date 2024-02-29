@@ -49,6 +49,21 @@ func NewDB(path string) (*DB, error) {
 	}, nil
 }
 
+func (db *DB) GetChirp(id int) (Chirp, error) {
+	allChirps, err := db.GetChirps()
+	if err != nil {
+		return Chirp{}, err
+	}
+
+	for _, chirp := range allChirps {
+		if chirp.ID == id {
+			return chirp, nil
+		}
+	}
+
+	return Chirp{}, nil
+}
+
 // GetChirps returns all chirps in the database
 func (db *DB) GetChirps() ([]Chirp, error) {
 	database, err := db.loadDB()
