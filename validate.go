@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	"strings"
 )
 
 func handleValidateChirp(w http.ResponseWriter, r *http.Request) {
@@ -30,21 +29,4 @@ func handleValidateChirp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, 200, `{"cleaned_body": "`+censorProfane(params.Body)+`"}`)
-}
-
-func censorProfane(str string) string {
-	var cleaned []string
-	profaneWords := []string{"kerfuffle", "sharbert", "fornax"}
-
-	words := strings.Split(str, " ")
-	for _, word := range words {
-		for _, profane := range profaneWords {
-			if strings.ToLower(word) == profane {
-				word = "****"
-			}
-		}
-		cleaned = append(cleaned, word)
-	}
-
-	return strings.Join(cleaned, " ")
 }

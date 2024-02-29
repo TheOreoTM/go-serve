@@ -9,7 +9,7 @@ import (
 
 type DB struct {
 	path string
-	mux  *sync.RWMutex
+	mux  *sync.Mutex
 }
 
 type DBStructure struct {
@@ -31,7 +31,7 @@ func NewDB(path string) (*DB, error) {
 			return nil, err
 		}
 
-		_, err = file.Write([]byte("{}"))
+		_, err = file.Write([]byte(`{"chirps":{}}`))
 
 		if err != nil {
 			return nil, err
@@ -45,51 +45,63 @@ func NewDB(path string) (*DB, error) {
 
 	return &DB{
 		path: path,
-		mux:  &sync.RWMutex{},
+		mux:  &sync.Mutex{},
 	}, nil
 }
 
 // GetChirps returns all chirps in the database
 func (db *DB) GetChirps() ([]Chirp, error) {
-	db.mux.RLock()
-	defer db.mux.RUnlock()
-
 	database, err := db.loadDB()
+
 	if err != nil {
-		return nil, err
+		err := db.ensureDB()
+		if err != nil {
+			return nil, err
+		}
+		database, err = db.loadDB()
+		if err != nil {
+			// delete file
+			_ = os.Remove(db.path)
+			NewDB("./database.json")
+			database, err = db.loadDB()
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	chirps := database.Chirps
-
-	var chirpsSlice []Chirp
-	for _, chirp := range chirps {
-		chirpsSlice = append(chirpsSlice, chirp)
+	if chirps == nil {
+		return []Chirp{}, nil
 	}
 
-	sort.Slice(chirpsSlice, func(i, j int) bool {
-		return chirpsSlice[i].ID < chirpsSlice[j].ID
-	})
+	keys := make([]int, 0, len(chirps))
+	for k := range chirps {
+		keys = append(keys, k)
+	}
+
+	sort.Ints(keys)
+
+	var chirpsSlice []Chirp
+	for _, k := range keys {
+		chirpsSlice = append(chirpsSlice, chirps[k])
+	}
 
 	return chirpsSlice, nil
 }
 
 // CreateChirp creates a new chirp and saves it to disk
 func (db *DB) CreateChirp(body string) (Chirp, error) {
-	db.mux.Lock()
-	defer db.mux.Unlock()
-
-	chirps, err := db.GetChirps()
+	chirpsSlice, err := db.GetChirps()
 	if err != nil {
 		return Chirp{}, err
 	}
 
-	nextID := len(chirps) + 1
+	nextID := len(chirpsSlice) + 1
 	chirp := Chirp{
 		ID:   nextID,
 		Body: body,
 	}
-
-	chirps[nextID] = chirp
 
 	dbStructure, err := db.loadDB()
 	if err != nil {
@@ -107,6 +119,8 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 
 // loadDB reads the database file into memory
 func (db *DB) loadDB() (DBStructure, error) {
+	db.mux.Lock()
+	defer db.mux.Unlock()
 	file, err := os.Open(db.path)
 	if err != nil {
 		return DBStructure{}, err
@@ -135,6 +149,7 @@ func (db *DB) writeDB(dbStructure DBStructure) error {
 	}
 
 	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "	")
 	err = encoder.Encode(dbStructure)
 	if err != nil {
 		return err
@@ -148,28 +163,28 @@ func (db *DB) writeDB(dbStructure DBStructure) error {
 	return nil
 }
 
-// // ensureDB creates a new database file if it doesn't exist
-// func (db *DB) ensureDB() error {
-// 	_, err := os.Stat(db.path)
-// 	if os.IsNotExist(err) {
-// 		file, err := os.Create(db.path)
-// 		if err != nil {
-// 			return err
-// 		}
+// ensureDB creates a new database file if it doesn't exist
+func (db *DB) ensureDB() error {
+	_, err := os.Stat(db.path)
+	if os.IsNotExist(err) {
+		file, err := os.Create(db.path)
+		if err != nil {
+			return err
+		}
 
-// 		_, err = file.Write([]byte("{}"))
+		_, err = file.Write([]byte(`{"chirps":{}}`))
 
-// 		if err != nil {
-// 			return err
-// 		}
+		if err != nil {
+			return err
+		}
 
-// 		err = file.Close()
-// 		if err != nil {
-// 			return err
-// 		}
+		err = file.Close()
+		if err != nil {
+			return err
+		}
 
-// 		return nil
+		return nil
 
-// 	}
-// 	return nil
-// }
+	}
+	return nil
+}
